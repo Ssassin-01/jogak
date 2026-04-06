@@ -1,0 +1,3 @@
+Running Gradle task 'assembleDebug'...                          
+>>> Automatically setting namespace to 'dev.isar.isar_flutter_libs' for subproject 'isar_flutter_libs'
+Running Gradle task 'assembleDebug'...                            153.1s
