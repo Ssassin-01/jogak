@@ -46,31 +46,43 @@ void main() {
     vec2 p = uv * 2.0 - 1.0;
     p.x *= aspect;
 
-    // Time-based wave movement
-    float t = uTime * 0.4;
+    // Time-based wave movement (Slightly slower for calmness)
+    float t = uTime * 0.3;
     
-    // Water ripple based on touch
+    // Water ripple based on touch (Smooth ripple)
     float dist = length(p - (uTouch / uSize * 2.0 - 1.0) * vec2(aspect, 1.0));
-    float ripple = sin(dist * 20.0 - uTime * 5.0) * exp(-dist * 3.0) * 0.05;
+    float ripple = sin(dist * 15.0 - uTime * 4.0) * exp(-dist * 2.5) * 0.08;
 
-    // Multi-layered waves (Confined to [0, 1])
-    float wave = fbm(p * 2.0 + t + ripple) * 0.5;
-    wave += fbm(p * 4.0 - t * 0.5 + wave) * 0.25;
+    // Multi-layered waves (Fractal noise base)
+    float wave = fbm(p * 1.5 + t + ripple) * 0.55;
+    wave += fbm(p * 3.0 - t * 0.4 + wave) * 0.25;
 
-    // Deep Lake Colors (Deep Ink Navy)
-    vec3 colorA = vec3(0.007, 0.015, 0.031); // #020408
-    vec3 colorB = vec3(0.05, 0.08, 0.15);    // Slightly lighter blue
+    // Deep Misty Purple Colors (은은한 보랏빛 호수)
+    // Deepest: #070612 (Purple black)
+    vec3 colorA = vec3(0.027, 0.024, 0.071); 
+    // Mid: #1D1E4A (Deep Navy Purple)
+    vec3 colorB = vec3(0.12, 0.12, 0.35);    
+    // Lightest (Wave edge): #342A5E (Lavender Navy)
+    vec3 colorC = vec3(0.2, 0.16, 0.37);     
+    
     vec3 waterColor = mix(colorA, colorB, wave);
+    waterColor = mix(waterColor, colorC, pow(wave, 2.0) * 0.4);
 
-    // Shimmer (Yoonseul) Calculation - Highlight only the peaks
-    float shimmer = pow(max(0.0, wave - 0.3) * 1.8, 10.0);
+    // Shimmer (Yoonseul) Calculation - High contrast peaks
+    // 진주빛 광채가 부서지는 효과
+    float shimmer = pow(max(0.0, wave - 0.25) * 2.2, 12.0);
     shimmer = clamp(shimmer, 0.0, 1.0);
     
-    // Sharp sparkles (Sparkling Yoonseul)
-    float sparks = step(0.99, hash(p * 200.0 + t)) * shimmer;
+    // Sharp particles (Reflective diamonds)
+    float sparks = step(0.985, hash(p * 150.0 + t * 0.5)) * shimmer;
     
-    vec3 finalColor = waterColor + vec3(0.6, 0.7, 0.8) * shimmer; // Silver-blue shimmer
-    finalColor += vec3(0.9, 0.8, 0.6) * sparks; // Soft golden sparkles
+    // Final Luminous Color Mix
+    vec3 finalColor = waterColor + vec3(0.75, 0.82, 1.0) * shimmer; // Pearl Blue Shimmer
+    finalColor += vec3(0.85, 0.75, 1.0) * sparks; // Lavender Diamond Sparkle
+    
+    // Ambient Atmosphere (Center light)
+    float glow = (1.0 - length(p * 0.5)) * 0.1;
+    finalColor += vec3(0.1, 0.05, 0.2) * glow;
 
     fragColor = vec4(finalColor, 1.0);
 }

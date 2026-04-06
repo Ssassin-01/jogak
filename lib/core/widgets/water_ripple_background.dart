@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:flutter_animate/flutter_animate.dart';
+import 'package:jogak/core/theme/app_colors.dart';
 
 class WaterRippleBackground extends StatefulWidget {
   final Widget? child;
@@ -62,14 +64,61 @@ class _WaterRippleBackgroundState extends State<WaterRippleBackground>
       onPointerHover: (event) => _touchPosition = event.localPosition,
       onPointerDown: (event) => _touchPosition = event.localPosition,
       onPointerMove: (event) => _touchPosition = event.localPosition,
-      child: CustomPaint(
-        painter: YoonseulPainter(
-          shader: _shader!,
-          time: _time,
-          touch: _touchPosition,
-        ),
-        child: widget.child ?? const SizedBox.expand(),
+      child: Stack(
+        children: [
+          CustomPaint(
+            size: Size.infinite,
+            painter: YoonseulPainter(
+              shader: _shader!,
+              time: _time,
+              touch: _touchPosition,
+            ),
+          ),
+          // 부유하는 수채화 입자 레이어
+          const WatercolorParticles(),
+          if (widget.child != null) widget.child!,
+        ],
       ),
+    );
+  }
+}
+
+class WatercolorParticles extends StatelessWidget {
+  const WatercolorParticles({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: List.generate(15, (index) {
+        final random = (index * 137) % 100 / 100;
+        return Positioned(
+          left: (index * 73) % 400.0,
+          top: (index * 191) % 800.0,
+          child: Container(
+            width: 4 + random * 8,
+            height: 4 + random * 8,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: [
+                AppColors.primary.withValues(alpha: 0.1),
+                AppColors.secondary.withValues(alpha: 0.1),
+                Colors.white.withValues(alpha: 0.05),
+              ][index % 3],
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.primary.withValues(alpha: 0.05),
+                  blurRadius: 10,
+                ),
+              ],
+            ),
+          ).animate(onPlay: (controller) => controller.repeat())
+            .moveY(begin: 0, end: -100 - random * 100, duration: (6000 + random * 4000).ms, curve: Curves.easeInOutSine)
+            .moveX(begin: 0, end: 30 * (index % 2 == 0 ? 1 : -1), duration: 4000.ms, curve: Curves.easeInOutSine)
+            .fadeIn(duration: 2000.ms)
+            .then(delay: 2000.ms)
+            .fadeOut(duration: 2000.ms),
+        );
+      }),
     );
   }
 }

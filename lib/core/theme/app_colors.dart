@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 
 class AppColors {
-  // 배경색 (심연의 짙은 네이비)
-  static const Color background = Color(0xFF020408);
+  // 배경색 (보랏빛이 감도는 깊은 수심)
+  static const Color background = Color(0xFF070612);
   
-  // 표면색 (호수 수면의 챠콜 블루)
-  static const Color surface = Color(0xFF10141D);
-  static const Color surfaceLight = Color(0xFF1A1F2C);
+  // 표면색 (반투명한 라벤더 네이비)
+  static const Color surface = Color(0xFF1D1B36);
+  static const Color surfaceLight = Color(0xFF2A284D);
   
   // 메인 색상 (잔잔한 물결의 실버)
   static const Color primary = Color(0xFFC0C0C0);
