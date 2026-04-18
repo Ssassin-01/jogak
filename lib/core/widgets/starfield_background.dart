@@ -45,65 +45,53 @@ class _StarfieldBackgroundState extends State<StarfieldBackground>
   Widget build(BuildContext context) {
     return Stack(
       children: [
-        // 1. Deep Space Background
+        // 1. Deep Space Background (Single Flat Dark color for better blending)
         Container(
-          decoration: BoxDecoration(
-            gradient: RadialGradient(
-              center: Alignment.center,
-              radius: 1.5,
-              colors: [
-                AppColors.background.withBlue(40).withValues(alpha: 0.8),
-                AppColors.background,
-              ],
-            ),
-          ),
+          color: AppColors.background,
         ),
 
-        // 2. Cosmic Fog & Nebula Layers (Stretched for Lake-like Mist)
+        // 2. Cosmic Fog & Nebula Layers (Subtler & Darker)
         AnimatedBuilder(
           animation: _controller,
           builder: (context, child) {
+            final double value = _controller.value;
             return Stack(
               children: [
-                // Horizontal Deep Mist Layer (Teal/Abyss)
+                // Deep Abyss Mist (Teal)
                 _buildNebula(
-                  const Color(0xFF004D5C).withValues(alpha: 0.2), // 더 짙은 청록
-                  const Offset(0.5, 0.6),
-                  2.5,
-                  _controller.value * 2 * pi,
-                  distortAmount: 0.15,
-                  scaleX: 2.0, // 수평으로 길게 늘림
-                  scaleY: 0.8,
-                ),
-                // Drifting Fog Layer (Abyss Purple)
-                _buildNebula(
-                  AppColors.background.withBlue(90).withValues(alpha: 0.18),
-                  const Offset(0.3, 0.4),
-                  2.0,
-                  (_controller.value * 0.7) * 2 * pi,
-                  distortAmount: 0.12,
-                  scaleX: 1.8,
-                  scaleY: 0.6,
-                ),
-                // Glowing Nebula Mist (Purple)
-                _buildNebula(
-                  AppColors.nebulaPurple.withValues(alpha: 0.22),
-                  const Offset(0.7, 0.3),
-                  1.2,
-                  (_controller.value * 1.5) * 2 * pi,
-                  distortAmount: 0.1,
-                  scaleX: 1.5,
-                  scaleY: 1.2,
-                ),
-                // Active Mist Pocket (Blue)
-                _buildNebula(
-                  AppColors.nebulaBlue.withValues(alpha: 0.2),
-                  const Offset(0.2, 0.8),
-                  1.0,
-                  ((_controller.value + 0.5) * 2.0) * 2 * pi,
+                  const Color(0xFF005F73), // 더 선명한 청록
+                  const Offset(0.5, 0.5),
+                  3.0, 
+                  value,
+                  alpha: 0.25, // 농도 상향
                   distortAmount: 0.2,
-                  scaleX: 1.4,
-                  scaleY: 0.9,
+                ),
+                // Drifting Dark Nebula (Navy)
+                _buildNebula(
+                  const Color(0xFF101835),
+                  const Offset(0.3, 0.4),
+                  2.5,
+                  value,
+                  alpha: 0.2,
+                  distortAmount: 0.15,
+                ),
+                // Glowing Soft Purple
+                _buildNebula(
+                  AppColors.nebulaPurple,
+                  const Offset(0.7, 0.3),
+                  2.2,
+                  value,
+                  alpha: 0.18,
+                  distortAmount: 0.1,
+                ),
+                // Active Blue Smog
+                _buildNebula(
+                  AppColors.nebulaBlue,
+                  const Offset(0.2, 0.7),
+                  2.0,
+                  value,
+                  alpha: 0.15,
+                  distortAmount: 0.25,
                 ),
                 
                 // Stars & Shooting Stars Layer
@@ -130,25 +118,32 @@ class _StarfieldBackgroundState extends State<StarfieldBackground>
     Color color, 
     Offset basePosition, 
     double radius, 
-    double angle, {
+    double value, {
+    double speedX = 0.0,
+    double alpha = 0.2,
     double distortAmount = 0.05,
-    double scaleX = 1.0,
+    double scaleX = 1.0, // 더 이상 scale을 외부에서 위젯 자체를 자르는 용도로 쓰지 않음
     double scaleY = 1.0,
   }) {
-    final x = basePosition.dx + cos(angle) * distortAmount + sin(angle * 1.3) * 0.03;
-    final y = basePosition.dy + sin(angle * 0.8) * distortAmount + cos(angle * 1.6) * 0.03;
+    final double angle = value * 2 * pi;
+    final double xMove = sin(angle * 0.5) * 0.3; // 수평 움직임 강조
+    
+    // 화면 전체를 덮도록 Positioned.fill 유지
+    final x = basePosition.dx + xMove + cos(angle * 1.0) * distortAmount;
+    final y = basePosition.dy + sin(angle * 1.0) * distortAmount;
 
     return Positioned.fill(
-      child: Transform.scale(
-        scaleX: scaleX,
-        scaleY: scaleY,
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: RadialGradient(
-              center: FractionalOffset(x, y),
-              radius: radius + sin(angle * 0.5) * 0.2, 
-              colors: [color, Colors.transparent],
-            ),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: RadialGradient(
+            center: FractionalOffset(x, y),
+            radius: radius, // 충분히 큰 반경
+            colors: [
+              color.withValues(alpha: alpha),
+              color.withValues(alpha: alpha * 0.5),
+              Colors.transparent,
+            ],
+            stops: const [0.0, 0.3, 1.0],
           ),
         ),
       ),
