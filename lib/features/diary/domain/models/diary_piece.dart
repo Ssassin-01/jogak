@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:jogak/core/theme/app_colors.dart';
 
 class DiaryPiece {
   final String id;
@@ -18,26 +19,26 @@ class DiaryPiece {
 final List<DiaryPiece> mockDiaryPieces = [
   DiaryPiece(
     id: '1',
-    content: '어제의 노을은 유난히 따뜻했다. 당신도 보았을까?',
+    content: '어제의 초신성은 유난히 따뜻했다. 당신도 보았을까?',
     date: DateTime.now().subtract(const Duration(days: 1)),
-    emotionColor: const Color(0xFFF1E4C3), // warm
+    emotionColor: AppColors.starlightJoy, 
   ),
   DiaryPiece(
     id: '2',
-    content: '빗방울이 호수 위로 떨어지는 소리가 음악처럼 들려.',
+    content: '성운 사이를 유영하는 기분이야. 고요함이 마음을 채운다.',
     date: DateTime.now().subtract(const Duration(days: 3)),
-    emotionColor: const Color(0xFF30628A), // calm/blue
+    emotionColor: AppColors.starlightCalm,
   ),
   DiaryPiece(
     id: '3',
-    content: '마음 한구석에 남은 보랏빛 기억을 선명하게 기록해두고 싶어.',
+    content: '마음 한구석에 남은 보랏빛 기억을 성좌로 기록해두고 싶어.',
     date: DateTime.now().subtract(const Duration(days: 5)),
-    emotionColor: const Color(0xFF342A5E), // misty purple
+    emotionColor: AppColors.starlightExcited,
   ),
   DiaryPiece(
     id: '4',
-    content: '조각조각 흩어진 생각들이 모여 나를 만든다.',
+    content: '조각조각 흩어진 생각들이 모여 하나의 별자리를 만든다.',
     date: DateTime.now().subtract(const Duration(days: 7)),
-    emotionColor: const Color(0xFFC0C0C0), // silver
+    emotionColor: AppColors.starlightSad,
   ),
 ];

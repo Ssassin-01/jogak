@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:jogak/core/theme/app_theme.dart';
-import 'package:jogak/features/home/presentation/home_screen.dart';
+import 'package:jogak/features/home/presentation/main_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -19,9 +19,9 @@ class JogakApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: '오늘의 조각',
+      title: '조각',
       theme: AppTheme.dark,
-      home: const HomeScreen(),
+      home: const MainScreen(),
       debugShowCheckedModeBanner: false,
     );
   }

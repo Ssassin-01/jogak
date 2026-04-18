@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:jogak/core/theme/app_colors.dart';
+import 'package:jogak/core/widgets/starfield_background.dart';
 
 enum CanvasMode { hand, brush, text }
 enum CanvasPieceType { text, photo }
@@ -47,11 +48,11 @@ class _DiaryCanvasScreenState extends State<DiaryCanvasScreen> {
   double _strokeWidth = 4.0;
 
   final List<Color> _palette = [
-    const Color(0xFF2C3E50),
-    const Color(0xFFE74C3C),
-    const Color(0xFF27AE60),
-    const Color(0xFF2980B9),
-    const Color(0xFFF39C12),
+    AppColors.starlightJoy,
+    AppColors.nebulaBlue,
+    AppColors.nebulaPurple,
+    const Color(0xFFFDFDFD), // 화이트
+    AppColors.starlightSad,
   ];
 
   @override
@@ -89,69 +90,67 @@ class _DiaryCanvasScreenState extends State<DiaryCanvasScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // 캔버스 내의 모든 보라색(Purple) 테마 요소를 물리적으로 제거
     return Theme(
       data: ThemeData(
         useMaterial3: true,
         brightness: Brightness.dark,
         colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.blueGrey,
-          brightness: Brightness.dark, // 테마와 밝기를 일치시켜 오류 해결
+          seedColor: AppColors.nebulaPurple,
+          brightness: Brightness.dark,
           primary: Colors.white,
-          secondary: Colors.white24,
-          surface: const Color(0xFF0F0F1B),
+          secondary: AppColors.secondary,
+          surface: AppColors.background,
           onSurface: Colors.white70,
         ),
         textSelectionTheme: const TextSelectionThemeData(
-          cursorColor: Colors.black45,
-          selectionColor: Color(0x33000000),
-          selectionHandleColor: Colors.black45,
+          cursorColor: Colors.white30,
+          selectionColor: Color(0x33FFFFFF),
+          selectionHandleColor: Colors.white30,
         ),
       ),
       child: Scaffold(
-        backgroundColor: const Color(0xFF0F0F1B),
+        backgroundColor: Colors.transparent, // Background handled by Starfield
         resizeToAvoidBottomInset: false,
-        body: Stack(
-          fit: StackFit.expand,
-          children: [
-            // 1. 깊은 어둠 배경
-            Container(color: const Color(0xFF0F0F1B)),
-            
-            // 2. 종이 조각 레이어
-            ..._pieces.map((piece) => _buildPiece(piece)).toList(),
-
-            // 3. 통합 드로잉 레이어
-            IgnorePointer(
-              ignoring: _currentMode != CanvasMode.brush,
-              child: GestureDetector(
-                onPanStart: (details) {
-                  setState(() {
-                    _strokes.add(DrawingStroke(
-                      points: [details.localPosition],
-                      color: _selectedColor,
-                      width: _strokeWidth,
-                    ));
-                  });
-                },
-                onPanUpdate: (details) {
-                  setState(() {
-                    if (_strokes.isNotEmpty) {
-                      _strokes.last.points.add(details.localPosition);
-                    }
-                  });
-                },
-                onPanEnd: (_) => setState(() => _strokes.last.points.add(null)),
-                child: CustomPaint(
-                  painter: DrawingPainter(strokes: _strokes),
-                  size: Size.infinite,
+        body: StarfieldBackground(
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              // 1. 종이 조각 레이어
+              ..._pieces.map((piece) => _buildPiece(piece)).toList(),
+  
+              // 2. 통합 드로잉 레이어
+              IgnorePointer(
+                ignoring: _currentMode != CanvasMode.brush,
+                child: GestureDetector(
+                  onPanStart: (details) {
+                    setState(() {
+                      _strokes.add(DrawingStroke(
+                        points: [details.localPosition],
+                        color: _selectedColor,
+                        width: _strokeWidth,
+                      ));
+                    });
+                  },
+                  onPanUpdate: (details) {
+                    setState(() {
+                      if (_strokes.isNotEmpty) {
+                        _strokes.last.points.add(details.localPosition);
+                      }
+                    });
+                  },
+                  onPanEnd: (_) => setState(() => _strokes.last.points.add(null)),
+                  child: CustomPaint(
+                    painter: DrawingPainter(strokes: _strokes),
+                    size: Size.infinite,
+                  ),
                 ),
               ),
-            ),
-
-            if (_currentMode == CanvasMode.brush) _buildDrawingOptions(),
-            _buildToolbar(),
-            _buildHeader(),
-          ],
+  
+              if (_currentMode == CanvasMode.brush) _buildDrawingOptions(),
+              _buildToolbar(),
+              _buildHeader(),
+            ],
+          ),
         ),
       ),
     );

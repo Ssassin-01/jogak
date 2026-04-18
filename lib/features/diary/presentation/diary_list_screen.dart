@@ -9,7 +9,7 @@ class DiaryListScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('오늘의 조각'),
+        title: const Text('별의 기록'),
         actions: [
           IconButton(
             onPressed: () {},
@@ -136,9 +136,9 @@ class DiaryListScreen extends StatelessWidget {
   Widget _buildMoodCharacter(String mood) {
     Color color;
     switch (mood) {
-      case 'happy': color = AppColors.moodJoy; break;
-      case 'sad': color = AppColors.moodSad; break;
-      case 'calm': color = AppColors.moodCalm; break;
+      case 'happy': color = AppColors.starlightJoy; break;
+      case 'sad': color = AppColors.starlightSad; break;
+      case 'calm': color = AppColors.starlightCalm; break;
       default: color = AppColors.primary;
     }
     
