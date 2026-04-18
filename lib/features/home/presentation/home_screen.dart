@@ -7,6 +7,7 @@ import 'package:jogak/core/widgets/water_ripple_background.dart';
 import 'package:jogak/core/services/audio_service.dart';
 import 'package:jogak/features/diary/domain/models/diary_piece.dart';
 import 'package:jogak/features/diary/presentation/diary_list_screen.dart';
+import 'package:jogak/features/diary/presentation/diary_canvas_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -180,7 +181,22 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: GestureDetector(
                     onTap: () {
                       HapticFeedback.heavyImpact();
-                      // TODO: 일기 쓰기 화면으로 이동
+                      // 일기 쓰기(캔버스) 화면으로 시네마틱 이동
+                      Navigator.of(context).push(
+                        PageRouteBuilder(
+                          pageBuilder: (context, animation, secondaryAnimation) => const DiaryCanvasScreen(),
+                          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                            var begin = const Offset(0.0, 1.0); // 아래에서 위로
+                            var end = Offset.zero;
+                            var curve = Curves.easeOutQuart;
+                            var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
+                            return SlideTransition(
+                              position: animation.drive(tween),
+                              child: FadeTransition(opacity: animation, child: child),
+                            );
+                          },
+                        ),
+                      );
                     },
                     child: Stack(
                       alignment: Alignment.center,
