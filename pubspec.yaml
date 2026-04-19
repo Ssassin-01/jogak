@@ -110,3 +110,4 @@ flutter:
   
   shaders:
     - shaders/yoonseul.frag
+    - shaders/cosmic_nebula.frag
