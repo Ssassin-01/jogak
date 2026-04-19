@@ -4,7 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:jogak/core/theme/app_colors.dart';
 
-class StarfieldBackground extends StatefulWidget {
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:jogak/core/providers/settings_provider.dart';
+
+class StarfieldBackground extends ConsumerStatefulWidget {
   final Widget? child;
   final Offset parallaxOffset;
 
@@ -15,10 +18,10 @@ class StarfieldBackground extends StatefulWidget {
   });
 
   @override
-  State<StarfieldBackground> createState() => _StarfieldBackgroundState();
+  ConsumerState<StarfieldBackground> createState() => _StarfieldBackgroundState();
 }
 
-class _StarfieldBackgroundState extends State<StarfieldBackground>
+class _StarfieldBackgroundState extends ConsumerState<StarfieldBackground>
     with TickerProviderStateMixin {
   late List<StarModel> _stars;
   late List<ShootingStarModel> _shootingStars;
@@ -44,7 +47,8 @@ class _StarfieldBackgroundState extends State<StarfieldBackground>
 
     // Ticker 즉시 초기화 (쉐이더 로드 전에 _ticker가 사용되는 오류 방지)
     _ticker = createTicker((elapsed) {
-      if (_isShaderLoaded && mounted) {
+      final isNebulaEnabled = ref.read(nebulaEnabledProvider);
+      if (_isShaderLoaded && mounted && isNebulaEnabled) {
         setState(() {
           _elapsedTime = elapsed.inMilliseconds / 1000.0;
         });
@@ -62,18 +66,21 @@ class _StarfieldBackgroundState extends State<StarfieldBackground>
         setState(() {
           _nebulaShader = program.fragmentShader();
           _isShaderLoaded = true;
-          _ticker.start(); // 쉐이더 로드 완료 후 Ticker 시작
+          final isNebulaEnabled = ref.read(nebulaEnabledProvider);
+          if (isNebulaEnabled) _ticker.start(); // 쉐이더 로드 완료 후 토글 확인하여 Ticker 시작
         });
       }
     } catch (e) {
       debugPrint('Failed to load cosmic_nebula shader: $e');
-      // 쉐이더 실패 시에도 ticker 시작해서 별은 보이도록
-      if (mounted) _ticker.start();
+      // 쉐이더 실패 시에도 매끄러운 동작을 위해 ticker 시작 (별은 보이도록)
+      final isNebulaEnabled = ref.read(nebulaEnabledProvider);
+      if (mounted && isNebulaEnabled) _ticker.start();
     }
   }
 
   @override
   void dispose() {
+    if (_ticker.isActive) _ticker.stop();
     _ticker.dispose();
     _starController.dispose();
     super.dispose();
@@ -81,13 +88,26 @@ class _StarfieldBackgroundState extends State<StarfieldBackground>
 
   @override
   Widget build(BuildContext context) {
+    final isNebulaEnabled = ref.watch(nebulaEnabledProvider);
+
+    // 전역 상태 변경 시 Ticker 제어
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        if (isNebulaEnabled) {
+          if (!_ticker.isActive && _isShaderLoaded) _ticker.start();
+        } else {
+          if (_ticker.isActive) _ticker.stop();
+        }
+      }
+    });
+
     return Stack(
       children: [
         // 1. Deep Space Base (짙은 검정)
         Container(color: AppColors.background),
 
         // 2. Cosmic Nebula Shader (fBm 기반, 호수 버전과 동일한 알고리즘)
-        if (_isShaderLoaded)
+        if (_isShaderLoaded && isNebulaEnabled)
           CustomPaint(
             size: Size.infinite,
             painter: NebulaShaderPainter(

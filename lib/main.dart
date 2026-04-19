@@ -1,14 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:jogak/core/theme/app_theme.dart';
+import 'package:jogak/features/diary/data/repositories/diary_repository.dart';
 import 'package:jogak/features/home/presentation/main_screen.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
+  // Isar 초기화
+  final isar = await DiaryRepository.init();
+  
   runApp(
-    const ProviderScope(
-      child: JogakApp(),
+    ProviderScope(
+      overrides: [
+        diaryRepositoryProvider.overrideWithValue(DiaryRepository(isar)),
+      ],
+      child: const JogakApp(),
     ),
   );
 }

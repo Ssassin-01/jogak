@@ -7,14 +7,17 @@ import 'package:jogak/core/widgets/starfield_background.dart';
 // import 'package:jogak/core/services/audio_service.dart';
 import 'package:jogak/features/diary/domain/models/diary_piece.dart';
 
-class HomeScreen extends StatefulWidget {
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:jogak/core/providers/settings_provider.dart';
+
+class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  ConsumerState<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends ConsumerState<HomeScreen> {
   Offset _parallaxOffset = Offset.zero;
   String? _activeSnippet; // 파편 터치 시 보여줄 일기 내용
 
@@ -36,6 +39,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isNebulaEnabled = ref.watch(nebulaEnabledProvider);
+
     return Scaffold(
       backgroundColor: AppColors.background,
       body: MouseRegion(
@@ -148,6 +153,45 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
                   ),
+
+                  // 좌측 상단 발열 제어 토글 (전역 설정)
+                  Positioned(
+                    top: MediaQuery.of(context).padding.top + 10,
+                    left: 20,
+                    child: GestureDetector(
+                      onTap: () {
+                        ref.read(nebulaEnabledProvider.notifier).state = !isNebulaEnabled;
+                        HapticFeedback.mediumImpact();
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              isNebulaEnabled ? Icons.cloud_queue_rounded : Icons.cloud_off_rounded,
+                              color: isNebulaEnabled ? AppColors.nebulaBlue : Colors.white38,
+                              size: 18,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              isNebulaEnabled ? 'Nebula On' : 'Power Saving',
+                              style: GoogleFonts.gowunBatang(
+                                color: isNebulaEnabled ? Colors.white70 : Colors.white38,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ).animate().fadeIn(delay: 1.seconds),
                 ],
               ),
             );
