@@ -22,18 +22,20 @@ class _GalaxyScreenState extends ConsumerState<GalaxyScreen> with TickerProvider
   DiaryEntry? _selectedEntry;
   final TransformationController _transformationController = TransformationController();
   
-  static const double _galaxySize = 4000.0; // 연도들이 중첩되므로 지도 크기를 적정 수준으로 조정
+  static const double _galaxySize = 3000.0; // 전체 크기 축소
   static const double _galaxyCenter = _galaxySize / 2;
   
+  Future<List<DiaryEntry>>? _diariesFuture; // Future 캐싱
+  
   int _selectedYear = DateTime.now().year;
-  int? _selectedMonth = DateTime.now().month;
+  int? _selectedMonth; // 초기값을 null로 설정하여 '전체 보기(ALL)'로 시작
   bool _isNavExpanded = false;
-  double _navOpacity = 1.0;
-  Timer? _navHideTimer;
 
   late AnimationController _fadeController;
   late AnimationController _navAnimationController;
   Animation<Matrix4>? _navAnimation;
+  Offset? _burstPosition;
+  Color? _burstColor;
 
   @override
   void initState() {
@@ -48,19 +50,15 @@ class _GalaxyScreenState extends ConsumerState<GalaxyScreen> with TickerProvider
 
     _transformationController.addListener(_onTransformationChanged);
     
+    _diariesFuture = ref.read(diaryRepositoryProvider).getAllDiaries(); // 초기 1회만 로드
+    
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _focusOnMonth(_selectedMonth);
     });
   }
 
   void _onTransformationChanged() {
-    if (_navOpacity > 0 && !_isNavExpanded) {
-      setState(() => _navOpacity = 0.0);
-    }
-    _navHideTimer?.cancel();
-    _navHideTimer = Timer(1500.ms, () {
-      if (mounted) setState(() => _navOpacity = 1.0);
-    });
+    // 스텔스 모드 삭제: 더 이상 내비게이션 투명도를 조절하지 않음
   }
 
   @override
@@ -69,7 +67,6 @@ class _GalaxyScreenState extends ConsumerState<GalaxyScreen> with TickerProvider
     _transformationController.dispose();
     _fadeController.dispose();
     _navAnimationController.dispose();
-    _navHideTimer?.cancel();
     super.dispose();
   }
 
@@ -103,7 +100,7 @@ class _GalaxyScreenState extends ConsumerState<GalaxyScreen> with TickerProvider
 
     if (month == null) {
       // 1. 전체 보기 (Overview) 모드
-      const double targetScope = 3200.0;
+      const double targetScope = 2500.0; // 범위를 줄여 더 가깝게 (화면에 가득 차도록)
       final double initialScale = math.min(screenWidth, screenHeight) / targetScope;
       targetMatrix
         ..translate(
@@ -149,7 +146,7 @@ class _GalaxyScreenState extends ConsumerState<GalaxyScreen> with TickerProvider
 
   Offset _getClusterCenter(int month) {
     final double angle = (month - 1) * (math.pi * 2 / 12) - (math.pi / 2);
-    const double orbitRadius = 1300.0;
+    const double orbitRadius = 900.0; // 궤도 반경 축소 (1300 -> 900)
     return Offset(
       _galaxyCenter + math.cos(angle) * orbitRadius,
       _galaxyCenter + math.sin(angle) * orbitRadius,
@@ -158,26 +155,36 @@ class _GalaxyScreenState extends ConsumerState<GalaxyScreen> with TickerProvider
 
   @override
   Widget build(BuildContext context) {
-    final diariesFuture = ref.watch(diaryRepositoryProvider).getAllDiaries();
+    // build 내에서 Future를 생성하지 않음
 
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: Stack(
         children: [
-          // 1. 패럴랙스 배경
+          // 1. 패럴랙스 배경 및 심해 성운 효과
           ValueListenableBuilder<Matrix4>(
             valueListenable: _transformationController,
             builder: (context, matrix, child) {
               final translation = matrix.getTranslation();
-              return StarfieldBackground(
-                parallaxOffset: Offset(translation.x / _galaxySize, translation.y / _galaxySize),
-                child: child,
+              final currentScale = matrix.getMaxScaleOnAxis();
+              return Stack(
+                children: [
+                   StarfieldBackground(
+                    parallaxOffset: Offset(translation.x / _galaxySize, translation.y / _galaxySize),
+                    child: child,
+                  ),
+                  // 추가 성운 및 먼지 레이어 (심도 강화)
+                  DeepSpaceAmbience(
+                    parallaxOffset: Offset(translation.x / _galaxySize, translation.y / _galaxySize),
+                    scale: currentScale,
+                  ),
+                ],
               );
             },
           ),
 
           FutureBuilder<List<DiaryEntry>>(
-            future: diariesFuture,
+            future: _diariesFuture,
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
                 return const Center(child: CircularProgressIndicator(color: AppColors.secondary, strokeWidth: 1));
@@ -221,6 +228,11 @@ class _GalaxyScreenState extends ConsumerState<GalaxyScreen> with TickerProvider
                                     entries: currentYearData[month] ?? [],
                                     detailAlpha: detailAlpha,
                                   ),
+                                
+                                // 4. 별빛 폭발 효과 레이어 (갤럭시 내부 좌표계)
+                                if (_burstPosition != null)
+                                   _buildBurstEffect(),
+
                                 _buildGalacticCore(),
                               ],
                             ),
@@ -242,10 +254,7 @@ class _GalaxyScreenState extends ConsumerState<GalaxyScreen> with TickerProvider
             DiaryDetailView(
               entry: _selectedEntry!,
               onBack: () => setState(() => _selectedEntry = null),
-            ).animate().fadeIn(duration: 400.ms).scale(
-              begin: const Offset(0.8, 0.8), end: const Offset(1.0, 1.0),
-              curve: Curves.easeOutCubic,
-            ),
+            ).animate().fadeIn(duration: 400.ms, curve: Curves.easeOut).blur(begin: const Offset(10, 10), end: Offset.zero),
         ],
       ),
     );
@@ -256,15 +265,44 @@ class _GalaxyScreenState extends ConsumerState<GalaxyScreen> with TickerProvider
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.auto_awesome_rounded, size: 60, color: Colors.white24),
-          const SizedBox(height: 20),
-          Text('은하가 비어있습나다. 3개년 데이터를 생성해보세요.', style: GoogleFonts.gowunBatang(color: Colors.white38)),
+          // 중심의 희미한 빛
+          Container(
+            padding: const EdgeInsets.all(40),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(color: AppColors.secondary.withValues(alpha: 0.05), blurRadius: 100, spreadRadius: 40)
+              ],
+            ),
+            child: Icon(Icons.auto_awesome_rounded, size: 40, color: Colors.white.withValues(alpha: 0.15)),
+          ).animate(onPlay: (c) => c.repeat(reverse: true))
+           .scale(begin: const Offset(0.8, 0.8), end: const Offset(1.2, 1.2), duration: 3.seconds, curve: Curves.easeInOut),
+          
           const SizedBox(height: 40),
+          Text(
+            '아직 은하에 별이 심어지지 않았습니다.',
+            style: GoogleFonts.gowunBatang(color: Colors.white54, fontSize: 16, letterSpacing: 2),
+          ).animate().fadeIn(delay: 400.ms, duration: 1.seconds),
+          const SizedBox(height: 12),
+          Text(
+             '당신의 일상들을 조각해 이곳을 빛나는 성단으로 채워주세요.',
+             style: GoogleFonts.gowunBatang(color: Colors.white24, fontSize: 12, letterSpacing: 1),
+          ).animate().fadeIn(delay: 800.ms, duration: 1.seconds),
+          
+          const SizedBox(height: 60),
           FloatingActionButton.extended(
-            onPressed: () {}, 
-            backgroundColor: Colors.white10,
-            label: const Text('3개년 진실된 성계 생성', style: TextStyle(color: Colors.white70)),
-          ),
+            onPressed: _injectDummyData, 
+            elevation: 0,
+            backgroundColor: Colors.white.withValues(alpha: 0.05),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(30),
+              side: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
+            ),
+            label: Text(
+              '3개년 진실된 성계 생성', 
+              style: GoogleFonts.outfit(color: Colors.white60, fontSize: 13, fontWeight: FontWeight.w300, letterSpacing: 1)
+            ),
+          ).animate().fadeIn(delay: 1200.ms).slideY(begin: 0.2, end: 0),
         ],
       ),
     );
@@ -276,104 +314,198 @@ class _GalaxyScreenState extends ConsumerState<GalaxyScreen> with TickerProvider
       left: 0,
       right: 0,
       child: SafeArea(
-        child: AnimatedOpacity(
-          opacity: _navOpacity,
-          duration: 500.ms,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // 1. 성좌의 인장 캡슐 (Stellar Seal)
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+              // 1. 성좌의 인장 (Stellar Seal) - 더욱 화려하게
               GestureDetector(
                 onTap: () => setState(() => _isNavExpanded = !_isNavExpanded),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(20),
-                  child: BackdropFilter(
-                    filter: ui.ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.05),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            '$_selectedYear',
-                            style: GoogleFonts.outfit(color: Colors.white70, fontWeight: FontWeight.w200, fontSize: 13, letterSpacing: 2),
-                          ),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 10),
-                            child: Text('✦', style: TextStyle(color: Colors.white.withValues(alpha: 0.2), fontSize: 10)),
-                          ),
-                          Text(
-                            _getAbbrMonth(_selectedMonth),
-                            style: GoogleFonts.outfit(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 13, letterSpacing: 2),
-                          ),
-                          const SizedBox(width: 8),
-                          Icon(
-                            _isNavExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
-                            color: Colors.white24,
-                            size: 16,
-                          )
-                        ],
+                child: Container(
+                  padding: const EdgeInsets.all(2),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: SweepGradient(
+                      colors: [Colors.white10, AppColors.secondary.withValues(alpha: 0.3), Colors.white10],
+                      stops: const [0.0, 0.5, 1.0],
+                    ),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(30),
+                    child: BackdropFilter(
+                      filter: ui.ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(30),
+                          border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
+                          boxShadow: [
+                            BoxShadow(color: AppColors.secondary.withValues(alpha: 0.1), blurRadius: 15, spreadRadius: 2)
+                          ],
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  '$_selectedYear',
+                                  style: GoogleFonts.outfit(color: Colors.white38, fontWeight: FontWeight.w200, fontSize: 10, letterSpacing: 3),
+                                ),
+                                Row(
+                                  children: [
+                                    Text(
+                                      _getAbbrMonth(_selectedMonth),
+                                      style: GoogleFonts.outfit(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 16, letterSpacing: 2),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Icon(
+                                      _isNavExpanded ? Icons.expand_less_rounded : Icons.expand_more_rounded,
+                                      color: Colors.white24,
+                                      size: 18,
+                                    )
+                                  ],
+                                ),
+                              ],
+                            ),
+                            Container(
+                              margin: const EdgeInsets.symmetric(horizontal: 16),
+                              width: 1, height: 20, color: Colors.white10,
+                            ),
+                            Icon(Icons.auto_awesome_rounded, color: AppColors.secondary.withValues(alpha: 0.5), size: 16)
+                              .animate(onPlay: (c) => c.repeat()).rotate(duration: 5.seconds),
+                          ],
+                        ),
                       ),
                     ),
                   ),
                 ),
               ).animate(target: _isNavExpanded ? 1 : 0).shimmer(duration: 2.seconds),
 
-              // 2. 확장 메뉴 (Blooming Expansion)
+              // 2. 천체 확장 지도 (Celestial Expansion)
               AnimatedCrossFade(
                 firstChild: const SizedBox(width: double.infinity),
                 secondChild: _buildExpandedMenu(years),
                 crossFadeState: _isNavExpanded ? CrossFadeState.showSecond : CrossFadeState.showFirst,
-                duration: 400.ms,
-                sizeCurve: Curves.easeOutQuart,
+                duration: 500.ms,
+                sizeCurve: Curves.easeOutBack,
               ),
             ],
           ),
         ),
-      ),
     );
   }
 
   Widget _buildExpandedMenu(List<int> years) {
     return Container(
-      margin: const EdgeInsets.only(top: 16, left: 30, right: 30),
-      padding: const EdgeInsets.all(20),
+      margin: const EdgeInsets.only(top: 20, left: 30, right: 30),
       decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.4),
-        borderRadius: BorderRadius.circular(30),
-        border: Border.all(color: Colors.white10),
+        borderRadius: BorderRadius.circular(35),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withValues(alpha: 0.4), blurRadius: 30, spreadRadius: 0)
+        ],
       ),
-      child: Column(
-        children: [
-          // 연도 스크롤
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: years.map((y) => _buildYearChip(y)).toList(),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(35),
+        child: BackdropFilter(
+          filter: ui.ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+          child: Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.03),
+              borderRadius: BorderRadius.circular(35),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+            ),
+            child: Column(
+              children: [
+                // 1. 연도 선택기 (Orbital Years)
+                Row(
+                  children: [
+                    Text('ERA', style: GoogleFonts.outfit(color: Colors.white24, fontSize: 10, letterSpacing: 4)),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: years.map((y) => _buildYearChip(y)).toList(),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 20),
+                  child: Divider(color: Colors.white12, height: 1),
+                ),
+                // 2. 월 선택 그리드 (Star Map Grid)
+                Wrap(
+                  spacing: 14,
+                  runSpacing: 14,
+                  alignment: WrapAlignment.center,
+                  children: [
+                    _buildMonthChip(null),
+                    ...List.generate(12, (i) => _buildMonthChip(i + 1)),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                // 3. Galactic Summary (감정 분포 요약) - Step 4
+                _buildGalacticSummary(),
+              ],
             ),
           ),
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 16),
-            child: Divider(color: Colors.white10, height: 1),
-          ),
-          // 월 그리드
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            alignment: WrapAlignment.center,
-            children: [
-              _buildMonthChip(null),
-              ...List.generate(12, (i) => _buildMonthChip(i + 1)),
-            ],
+        ),
+      ),
+    ).animate().fadeIn(duration: 500.ms).slideY(begin: -0.05, end: 0, curve: Curves.easeOutBack);
+  }
+
+  Widget _buildGalacticSummary() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.03),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.insights_rounded, color: AppColors.secondary.withValues(alpha: 0.4), size: 14),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('GALACTIC RESONANCE', style: GoogleFonts.outfit(color: Colors.white38, fontSize: 9, letterSpacing: 2)),
+                const SizedBox(height: 4),
+                // 추상적 막대 그래프 (Emotion Dist)
+                Row(
+                  children: [
+                    _buildSummaryBar(AppColors.starlightJoy, 0.4),
+                    _buildSummaryBar(AppColors.starlightCalm, 0.25),
+                    _buildSummaryBar(AppColors.starlightSad, 0.15),
+                    _buildSummaryBar(AppColors.nebulaPurple, 0.2),
+                  ],
+                ),
+              ],
+            ),
           ),
         ],
       ),
-    ).animate().fadeIn(duration: 400.ms).slideY(begin: -0.1, end: 0);
+    );
+  }
+
+  Widget _buildSummaryBar(Color color, double flex) {
+     return Expanded(
+       flex: (flex * 100).toInt(),
+       child: Container(
+         height: 3,
+         margin: const EdgeInsets.symmetric(horizontal: 1),
+         decoration: BoxDecoration(
+           color: color.withValues(alpha: 0.6),
+           borderRadius: BorderRadius.circular(2),
+           boxShadow: [BoxShadow(color: color.withValues(alpha: 0.3), blurRadius: 4)],
+         ),
+       ),
+     );
   }
 
   Widget _buildYearChip(int year) {
@@ -381,18 +513,20 @@ class _GalaxyScreenState extends ConsumerState<GalaxyScreen> with TickerProvider
     return GestureDetector(
       onTap: () => _changeYear(year),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        margin: const EdgeInsets.symmetric(horizontal: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+        margin: const EdgeInsets.symmetric(horizontal: 6),
         decoration: BoxDecoration(
           color: isSelected ? Colors.white.withValues(alpha: 0.1) : Colors.transparent,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(15),
+          border: Border.all(color: isSelected ? Colors.white10 : Colors.transparent),
         ),
         child: Text(
           '$year',
           style: GoogleFonts.outfit(
             color: isSelected ? Colors.white : Colors.white24,
-            fontWeight: isSelected ? FontWeight.bold : FontWeight.w200,
-            fontSize: 16,
+            fontWeight: isSelected ? FontWeight.w600 : FontWeight.w200,
+            fontSize: 15,
+            letterSpacing: 1,
           ),
         ),
       ),
@@ -404,23 +538,75 @@ class _GalaxyScreenState extends ConsumerState<GalaxyScreen> with TickerProvider
     return GestureDetector(
       onTap: () => _focusOnMonth(month),
       child: AnimatedContainer(
-        duration: 300.ms,
-        width: 48,
-        height: 48,
+        duration: 400.ms,
+        curve: Curves.easeOutBack,
+        width: 52,
+        height: 52,
         alignment: Alignment.center,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          color: isSelected ? Colors.white.withValues(alpha: 0.15) : Colors.white.withValues(alpha: 0.05),
-          border: Border.all(color: isSelected ? Colors.white24 : Colors.transparent),
+          color: isSelected ? AppColors.secondary.withValues(alpha: 0.1) : Colors.white.withValues(alpha: 0.05),
+          border: Border.all(color: isSelected ? AppColors.secondary.withValues(alpha: 0.3) : Colors.white.withValues(alpha: 0.05)),
+          boxShadow: isSelected ? [
+            BoxShadow(color: AppColors.secondary.withValues(alpha: 0.15), blurRadius: 10)
+          ] : null,
         ),
-        child: Text(
-          month == null ? 'ALL' : '$month',
-          style: GoogleFonts.outfit(
-            color: isSelected ? Colors.white : Colors.white38,
-            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-            fontSize: month == null ? 10 : 14,
-            letterSpacing: month == null ? 1 : 0,
-          ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              month == null ? 'ALL' : '$month',
+              style: GoogleFonts.outfit(
+                color: isSelected ? AppColors.secondary : Colors.white38,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                fontSize: month == null ? 10 : 16,
+              ),
+            ),
+            if (isSelected && month != null)
+              Container(
+                margin: const EdgeInsets.only(top: 2),
+                width: 4, height: 4, decoration: const BoxDecoration(shape: BoxShape.circle, color: AppColors.secondary),
+              ).animate().scale(duration: 300.ms),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBurstEffect() {
+    return Positioned(
+      left: _burstPosition!.dx - 100,
+      top: _burstPosition!.dy - 100,
+      child: Container(
+        width: 200, height: 200,
+        alignment: Alignment.center,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            // 충격파
+            Container(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: (_burstColor ?? Colors.white).withValues(alpha: 0.5), width: 2),
+              ),
+            ).animate().scale(begin: const Offset(0.1, 0.1), end: const Offset(2.0, 2.0), duration: 600.ms, curve: Curves.easeOutQuart).fadeOut(),
+            
+            // 빛의 조각들
+            for (int i = 0; i < 8; i++)
+              Transform.rotate(
+                angle: i * (math.pi * 2 / 8),
+                child: Transform.translate(
+                  offset: const Offset(0, -20),
+                  child: Container(
+                    width: 2, height: 15,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+              ).animate().moveY(begin: 0, end: -60, duration: 500.ms, curve: Curves.easeOutCubic).fadeOut(),
+          ],
         ),
       ),
     );
@@ -460,10 +646,10 @@ class _GalaxyScreenState extends ConsumerState<GalaxyScreen> with TickerProvider
     }
 
     return Positioned(
-      left: clusterCenter.dx - 450,
-      top: clusterCenter.dy - 450,
+      left: clusterCenter.dx - 300,
+      top: clusterCenter.dy - 300,
       child: SizedBox(
-        width: 900, height: 900,
+        width: 600, height: 600,
         child: Stack(
           alignment: Alignment.center,
           children: [
@@ -522,31 +708,52 @@ class _GalaxyScreenState extends ConsumerState<GalaxyScreen> with TickerProvider
   }
 
   Widget _buildZodiacPainter(int month, int daysCount, Map<int, List<DiaryEntry>> dayMap, double alpha) {
-    final zodiacPoints = ZodiacData.getZodiacPoints(month, daysCount, 850);
+    final zodiacPoints = ZodiacData.getZodiacPoints(month, daysCount, 550); // 포인트 범위 축소
     final zodiacLines = ZodiacData.getZodiacLines(month, zodiacPoints);
 
     return Stack(
       children: [
         CustomPaint(
-          size: const Size(900, 900),
+          size: const Size(600, 600),
           painter: ZodiacLinePainter(points: zodiacPoints, lines: zodiacLines, alpha: alpha),
         ),
         
         for (int i = 0; i < zodiacPoints.length; i++)
-          _buildDailyStar(i + 1, zodiacPoints[i], dayMap[i + 1], alpha),
+          _buildDailyStar(month, i + 1, zodiacPoints[i], dayMap[i + 1], alpha),
       ],
     );
   }
 
-  Widget _buildDailyStar(int day, Offset pos, List<DiaryEntry>? entries, double alpha) {
+  Widget _buildDailyStar(int month, int day, Offset pos, List<DiaryEntry>? entries, double alpha) {
     final bool hasEntry = entries != null && entries.isNotEmpty;
     final emotionColor = hasEntry ? Color(entries.first.emotionColorValue) : Colors.white12;
-    final isMultiple = hasEntry && entries.length > 1;
+    
+    // 조각 개수에 따른 시각적 차별화
+    final int piecesCount = hasEntry ? entries.first.pieces.length : 0;
+    final double starSizeBase = hasEntry ? (5 + (piecesCount * 0.8)).clamp(5.0, 12.0) : 1.5;
+    final bool isMagical = piecesCount >= 3;
 
     return Positioned(
-      left: pos.dx + 25, top: pos.dy + 25,
+      left: pos.dx + 25 - 25, top: pos.dy + 25 - 25, // GestureDetector 영역 확보
       child: GestureDetector(
-        onTap: hasEntry ? () => setState(() => _selectedEntry = entries.first) : null,
+        behavior: HitTestBehavior.opaque, // 투명한 컨테이너도 터치를 인식하도록 설정
+        onTap: hasEntry ? () async {
+          // 별빛 폭발 효과 트리거
+          final clusterCenter = _getClusterCenter(month);
+          final absoluteX = clusterCenter.dx - 300 + pos.dx + 25;
+          final absoluteY = clusterCenter.dy - 300 + pos.dy + 25;
+          
+          setState(() {
+            _burstPosition = Offset(absoluteX, absoluteY);
+            _burstColor = emotionColor;
+            _selectedEntry = entries.first;
+          });
+
+          // 효과 자동 제거
+          Future.delayed(800.ms, () {
+            if (mounted) setState(() => _burstPosition = null);
+          });
+        } : null,
         child: Container(
           width: 50, height: 50,
           alignment: Alignment.center,
@@ -554,35 +761,49 @@ class _GalaxyScreenState extends ConsumerState<GalaxyScreen> with TickerProvider
           child: Stack(
             alignment: Alignment.center,
             children: [
-              if (hasEntry)
+              if (hasEntry) ...[
+                // 외곽 광채 (Glow)
                 Container(
-                  width: (isMultiple ? 14 : 9) * (0.5 + alpha * 0.5), 
-                  height: (isMultiple ? 14 : 9) * (0.5 + alpha * 0.5),
+                  width: (starSizeBase * 3) * (0.4 + alpha * 0.6), 
+                  height: (starSizeBase * 3) * (0.4 + alpha * 0.6),
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
-                        color: emotionColor.withValues(alpha: 0.5 * alpha), 
-                        blurRadius: (isMultiple ? 18 : 10) * alpha, 
-                        spreadRadius: (isMultiple ? 5 : 2) * alpha
+                        color: emotionColor.withValues(alpha: (isMagical ? 0.6 : 0.3) * alpha), 
+                        blurRadius: (starSizeBase * 2.5) * alpha, 
+                        spreadRadius: (isMagical ? 4 : 1) * alpha
                       ),
                     ],
                   ),
-                ),
+                ).animate(onPlay: (c) => c.repeat(reverse: true))
+                 .scale(begin: const Offset(0.8, 0.8), end: const Offset(1.2, 1.2), duration: (1500 + (day % 5) * 200).ms),
+                
+                // 마법 같은 반짝임 효과 (조각이 많은 별)
+                if (isMagical)
+                  Icon(Icons.auto_awesome, color: Colors.white.withValues(alpha: 0.4 * alpha), size: 14)
+                    .animate(onPlay: (c) => c.repeat())
+                    .rotate(duration: 3.seconds)
+                    .scale(begin: const Offset(0.5, 0.5), end: const Offset(1.5, 1.5), duration: 2.seconds, curve: Curves.easeInOut),
+              ],
               
+              // 별 본체
               Container(
-                width: hasEntry ? (isMultiple ? 7 : 5) : 1.5,
-                height: hasEntry ? (isMultiple ? 7 : 5) : 1.5,
+                width: starSizeBase,
+                height: starSizeBase,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle, 
-                  color: hasEntry ? Colors.white.withValues(alpha: alpha.clamp(0.2, 1.0)) : Colors.white24.withValues(alpha: alpha)
+                  color: hasEntry ? Colors.white.withValues(alpha: alpha.clamp(0.4, 1.0)) : Colors.white24.withValues(alpha: alpha),
+                  boxShadow: hasEntry ? [
+                    BoxShadow(color: Colors.white, blurRadius: 4 * alpha)
+                  ] : null,
                 ),
               ),
             ],
           ),
         ),
       ),
-    ).animate(target: hasEntry ? 1 : 0).scale(begin: const Offset(0.8, 0.8), end: const Offset(1.2, 1.2));
+    ).animate(target: hasEntry ? 1 : 0).scale(begin: const Offset(0.0, 0.0), end: const Offset(1.0, 1.0), curve: Curves.elasticOut, duration: 800.ms);
   }
 
   Widget _buildGalacticCore() {
@@ -777,7 +998,7 @@ class ZodiacLinePainter extends CustomPainter {
     final path = Path();
     path.moveTo(points[0].dx + 25, points[0].dy + 25);
     for (int i = 1; i < points.length; i++) {
-      path.lineTo(points[i].dx + 50, points[i].dy + 50);
+      path.lineTo(points[i].dx + 25, points[i].dy + 25);
     }
     
     canvas.drawPath(path, glowPaint);
@@ -787,4 +1008,142 @@ class ZodiacLinePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+/// 심해 성운 및 먼지 레이어 (공간 심도 강화)
+class DeepSpaceAmbience extends StatelessWidget {
+  final Offset parallaxOffset;
+  final double scale;
+
+  const DeepSpaceAmbience({
+    super.key,
+    required this.parallaxOffset,
+    required this.scale,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        // 1. 거대 성운 (Nebula Layers)
+        Positioned.fill(
+          child: RepaintBoundary(
+            child: _NebulaLayer(parallaxOffset: parallaxOffset, scale: scale),
+          ),
+        ),
+        // 2. 우주 먼지 (Dust Particles)
+        Positioned.fill(
+          child: RepaintBoundary(
+            child: _DustLayer(parallaxOffset: parallaxOffset),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _NebulaLayer extends StatelessWidget {
+  final Offset parallaxOffset;
+  final double scale;
+
+  const _NebulaLayer({required this.parallaxOffset, required this.scale});
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        _buildNebula(
+          context,
+          color: AppColors.nebulaPurple.withValues(alpha: 0.08),
+          alignment: const Alignment(-0.8, -0.6),
+          size: 800 * scale,
+          duration: 30.seconds,
+          offsetMultiplier: 40,
+        ),
+        _buildNebula(
+          context,
+          color: AppColors.nebulaBlue.withValues(alpha: 0.06),
+          alignment: const Alignment(0.7, 0.5),
+          size: 1000 * scale,
+          duration: 45.seconds,
+          offsetMultiplier: 30,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildNebula(
+    BuildContext context, {
+    required Color color,
+    required Alignment alignment,
+    required double size,
+    required Duration duration,
+    required double offsetMultiplier,
+  }) {
+    return AnimatedAlign(
+      duration: const Duration(milliseconds: 100),
+      alignment: Alignment(
+        alignment.x + (parallaxOffset.dx * offsetMultiplier),
+        alignment.y + (parallaxOffset.dy * offsetMultiplier),
+      ),
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: RadialGradient(
+            colors: [color, color.withValues(alpha: 0.01), Colors.transparent],
+          ),
+        ),
+      ),
+    ).animate(onPlay: (c) => c.repeat(reverse: true))
+     .scale(begin: const Offset(0.9, 0.9), end: const Offset(1.1, 1.1), duration: duration, curve: Curves.easeInOut);
+  }
+}
+
+class _DustLayer extends StatelessWidget {
+  final Offset parallaxOffset;
+  const _DustLayer({required this.parallaxOffset});
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      painter: _DustPainter(parallaxOffset: parallaxOffset),
+    );
+  }
+}
+
+class _DustPainter extends CustomPainter {
+  final Offset parallaxOffset;
+  _DustPainter({required this.parallaxOffset});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final random = math.Random(42); // 시드 고정
+    final paint = Paint()..color = Colors.white.withValues(alpha: 0.15);
+
+    for (int i = 0; i < 40; i++) {
+      final xBase = random.nextDouble() * size.width;
+      final yBase = random.nextDouble() * size.height;
+      final depth = random.nextDouble() * 0.5 + 0.5;
+      final dustSize = random.nextDouble() * 1.5 + 0.5;
+
+      final dx = (xBase + parallaxOffset.dx * 150 * depth) % size.width;
+      final dy = (yBase + parallaxOffset.dy * 150 * depth) % size.height;
+
+      canvas.drawCircle(Offset(dx, dy), dustSize, paint);
+      
+      // 약간의 번짐 효과
+      if (random.nextDouble() > 0.7) {
+        canvas.drawCircle(
+          Offset(dx, dy), 
+          dustSize * 3, 
+          Paint()..color = Colors.white.withValues(alpha: 0.03)..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2)
+        );
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _DustPainter oldDelegate) => oldDelegate.parallaxOffset != parallaxOffset;
 }
