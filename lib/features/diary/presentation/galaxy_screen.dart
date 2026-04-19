@@ -29,10 +29,11 @@ class _GalaxyScreenState extends ConsumerState<GalaxyScreen> with TickerProvider
   
   int _selectedYear = DateTime.now().year;
   int? _selectedMonth; // 초기값을 null로 설정하여 '전체 보기(ALL)'로 시작
-  bool _isNavExpanded = false;
 
   late AnimationController _fadeController;
   late AnimationController _navAnimationController;
+  late AnimationController _burstController;
+
   Animation<Matrix4>? _navAnimation;
   Offset? _burstPosition;
   Color? _burstColor;
@@ -48,8 +49,6 @@ class _GalaxyScreenState extends ConsumerState<GalaxyScreen> with TickerProvider
       }
     });
 
-    _transformationController.addListener(_onTransformationChanged);
-    
     _diariesFuture = ref.read(diaryRepositoryProvider).getAllDiaries(); // 초기 1회만 로드
     
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -57,23 +56,12 @@ class _GalaxyScreenState extends ConsumerState<GalaxyScreen> with TickerProvider
     });
   }
 
-  void _onTransformationChanged() {
-    // 스텔스 모드 삭제: 더 이상 내비게이션 투명도를 조절하지 않음
-  }
-
   @override
   void dispose() {
-    _transformationController.removeListener(_onTransformationChanged);
     _transformationController.dispose();
     _fadeController.dispose();
     _navAnimationController.dispose();
     super.dispose();
-  }
-
-  String _getAbbrMonth(int? month) {
-    if (month == null) return 'ALL';
-    const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
-    return months[month - 1];
   }
 
   void _changeYear(int year) {
@@ -91,7 +79,6 @@ class _GalaxyScreenState extends ConsumerState<GalaxyScreen> with TickerProvider
   void _focusOnMonth(int? month) {
     setState(() {
       _selectedMonth = month;
-      _isNavExpanded = false; // 선택 시 자동 축소
     });
     
     final screenWidth = MediaQuery.of(context).size.width;
@@ -155,8 +142,6 @@ class _GalaxyScreenState extends ConsumerState<GalaxyScreen> with TickerProvider
 
   @override
   Widget build(BuildContext context) {
-    // build 내에서 Future를 생성하지 않음
-
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: Stack(
@@ -229,10 +214,6 @@ class _GalaxyScreenState extends ConsumerState<GalaxyScreen> with TickerProvider
                                     detailAlpha: detailAlpha,
                                   ),
                                 
-                                // 4. 별빛 폭발 효과 레이어 (갤럭시 내부 좌표계)
-                                if (_burstPosition != null)
-                                   _buildBurstEffect(),
-
                                 _buildGalacticCore(),
                               ],
                             ),
@@ -241,6 +222,7 @@ class _GalaxyScreenState extends ConsumerState<GalaxyScreen> with TickerProvider
                       ),
                       
                       _buildNavigators(availableYears),
+                      if (_burstPosition != null) _buildBurstEffect(),
                     ],
                   );
                 },
@@ -248,13 +230,13 @@ class _GalaxyScreenState extends ConsumerState<GalaxyScreen> with TickerProvider
             },
           ),
 
-          _buildOverlayUI(),
-
           if (_selectedEntry != null)
             DiaryDetailView(
               entry: _selectedEntry!,
               onBack: () => setState(() => _selectedEntry = null),
             ).animate().fadeIn(duration: 400.ms, curve: Curves.easeOut).blur(begin: const Offset(10, 10), end: Offset.zero),
+          
+          _buildOverlayUI(),
         ],
       ),
     );
@@ -288,326 +270,104 @@ class _GalaxyScreenState extends ConsumerState<GalaxyScreen> with TickerProvider
              '당신의 일상들을 조각해 이곳을 빛나는 성단으로 채워주세요.',
              style: GoogleFonts.gowunBatang(color: Colors.white24, fontSize: 12, letterSpacing: 1),
           ).animate().fadeIn(delay: 800.ms, duration: 1.seconds),
-          
-          const SizedBox(height: 60),
-          FloatingActionButton.extended(
-            onPressed: _injectDummyData, 
-            elevation: 0,
-            backgroundColor: Colors.white.withValues(alpha: 0.05),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(30),
-              side: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
-            ),
-            label: Text(
-              '3개년 진실된 성계 생성', 
-              style: GoogleFonts.outfit(color: Colors.white60, fontSize: 13, fontWeight: FontWeight.w300, letterSpacing: 1)
-            ),
-          ).animate().fadeIn(delay: 1200.ms).slideY(begin: 0.2, end: 0),
         ],
       ),
     );
   }
 
   Widget _buildNavigators(List<int> years) {
+    final bottomPadding = MediaQuery.of(context).padding.bottom;
     return Positioned(
-      top: 60,
+      bottom: 82 + bottomPadding, // 하단바에 더 밀착
       left: 0,
       right: 0,
-      child: SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-              // 1. 성좌의 인장 (Stellar Seal) - 더욱 화려하게
-              GestureDetector(
-                onTap: () => setState(() => _isNavExpanded = !_isNavExpanded),
-                child: Container(
-                  padding: const EdgeInsets.all(2),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: SweepGradient(
-                      colors: [Colors.white10, AppColors.secondary.withValues(alpha: 0.3), Colors.white10],
-                      stops: const [0.0, 0.5, 1.0],
-                    ),
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(30),
-                    child: BackdropFilter(
-                      filter: ui.ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.08),
-                          borderRadius: BorderRadius.circular(30),
-                          border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
-                          boxShadow: [
-                            BoxShadow(color: AppColors.secondary.withValues(alpha: 0.1), blurRadius: 15, spreadRadius: 2)
-                          ],
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  '$_selectedYear',
-                                  style: GoogleFonts.outfit(color: Colors.white38, fontWeight: FontWeight.w200, fontSize: 10, letterSpacing: 3),
-                                ),
-                                Row(
-                                  children: [
-                                    Text(
-                                      _getAbbrMonth(_selectedMonth),
-                                      style: GoogleFonts.outfit(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 16, letterSpacing: 2),
-                                    ),
-                                    const SizedBox(width: 6),
-                                    Icon(
-                                      _isNavExpanded ? Icons.expand_less_rounded : Icons.expand_more_rounded,
-                                      color: Colors.white24,
-                                      size: 18,
-                                    )
-                                  ],
-                                ),
-                              ],
-                            ),
-                            Container(
-                              margin: const EdgeInsets.symmetric(horizontal: 16),
-                              width: 1, height: 20, color: Colors.white10,
-                            ),
-                            Icon(Icons.auto_awesome_rounded, color: AppColors.secondary.withValues(alpha: 0.5), size: 16)
-                              .animate(onPlay: (c) => c.repeat()).rotate(duration: 5.seconds),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ).animate(target: _isNavExpanded ? 1 : 0).shimmer(duration: 2.seconds),
-
-              // 2. 천체 확장 지도 (Celestial Expansion)
-              AnimatedCrossFade(
-                firstChild: const SizedBox(width: double.infinity),
-                secondChild: _buildExpandedMenu(years),
-                crossFadeState: _isNavExpanded ? CrossFadeState.showSecond : CrossFadeState.showFirst,
-                duration: 500.ms,
-                sizeCurve: Curves.easeOutBack,
-              ),
-            ],
-          ),
-        ),
-    );
-  }
-
-  Widget _buildExpandedMenu(List<int> years) {
-    return Container(
-      margin: const EdgeInsets.only(top: 20, left: 30, right: 30),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(35),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withValues(alpha: 0.4), blurRadius: 30, spreadRadius: 0)
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(35),
-        child: BackdropFilter(
-          filter: ui.ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-          child: Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.03),
-              borderRadius: BorderRadius.circular(35),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
-            ),
-            child: Column(
-              children: [
-                // 1. 연도 선택기 (Orbital Years)
-                Row(
-                  children: [
-                    Text('ERA', style: GoogleFonts.outfit(color: Colors.white24, fontSize: 10, letterSpacing: 4)),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: Row(
-                          children: years.map((y) => _buildYearChip(y)).toList(),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 20),
-                  child: Divider(color: Colors.white12, height: 1),
-                ),
-                // 2. 월 선택 그리드 (Star Map Grid)
-                Wrap(
-                  spacing: 14,
-                  runSpacing: 14,
-                  alignment: WrapAlignment.center,
-                  children: [
-                    _buildMonthChip(null),
-                    ...List.generate(12, (i) => _buildMonthChip(i + 1)),
-                  ],
-                ),
-                const SizedBox(height: 20),
-                // 3. Galactic Summary (감정 분포 요약) - Step 4
-                _buildGalacticSummary(),
-              ],
-            ),
-          ),
-        ),
-      ),
-    ).animate().fadeIn(duration: 500.ms).slideY(begin: -0.05, end: 0, curve: Curves.easeOutBack);
-  }
-
-  Widget _buildGalacticSummary() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.03),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.insights_rounded, color: AppColors.secondary.withValues(alpha: 0.4), size: 14),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('GALACTIC RESONANCE', style: GoogleFonts.outfit(color: Colors.white38, fontSize: 9, letterSpacing: 2)),
-                const SizedBox(height: 4),
-                // 추상적 막대 그래프 (Emotion Dist)
-                Row(
-                  children: [
-                    _buildSummaryBar(AppColors.starlightJoy, 0.4),
-                    _buildSummaryBar(AppColors.starlightCalm, 0.25),
-                    _buildSummaryBar(AppColors.starlightSad, 0.15),
-                    _buildSummaryBar(AppColors.nebulaPurple, 0.2),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSummaryBar(Color color, double flex) {
-     return Expanded(
-       flex: (flex * 100).toInt(),
-       child: Container(
-         height: 3,
-         margin: const EdgeInsets.symmetric(horizontal: 1),
-         decoration: BoxDecoration(
-           color: color.withValues(alpha: 0.6),
-           borderRadius: BorderRadius.circular(2),
-           boxShadow: [BoxShadow(color: color.withValues(alpha: 0.3), blurRadius: 4)],
-         ),
-       ),
-     );
-  }
-
-  Widget _buildYearChip(int year) {
-    final isSelected = _selectedYear == year;
-    return GestureDetector(
-      onTap: () => _changeYear(year),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-        margin: const EdgeInsets.symmetric(horizontal: 6),
-        decoration: BoxDecoration(
-          color: isSelected ? Colors.white.withValues(alpha: 0.1) : Colors.transparent,
-          borderRadius: BorderRadius.circular(15),
-          border: Border.all(color: isSelected ? Colors.white10 : Colors.transparent),
-        ),
-        child: Text(
-          '$year',
-          style: GoogleFonts.outfit(
-            color: isSelected ? Colors.white : Colors.white24,
-            fontWeight: isSelected ? FontWeight.w600 : FontWeight.w200,
-            fontSize: 15,
-            letterSpacing: 1,
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildMonthChip(int? month) {
-    final isSelected = _selectedMonth == month;
-    return GestureDetector(
-      onTap: () => _focusOnMonth(month),
-      child: AnimatedContainer(
-        duration: 400.ms,
-        curve: Curves.easeOutBack,
-        width: 52,
-        height: 52,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: isSelected ? AppColors.secondary.withValues(alpha: 0.1) : Colors.white.withValues(alpha: 0.05),
-          border: Border.all(color: isSelected ? AppColors.secondary.withValues(alpha: 0.3) : Colors.white.withValues(alpha: 0.05)),
-          boxShadow: isSelected ? [
-            BoxShadow(color: AppColors.secondary.withValues(alpha: 0.15), blurRadius: 10)
-          ] : null,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              month == null ? 'ALL' : '$month',
-              style: GoogleFonts.outfit(
-                color: isSelected ? AppColors.secondary : Colors.white38,
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                fontSize: month == null ? 10 : 16,
-              ),
-            ),
-            if (isSelected && month != null)
-              Container(
-                margin: const EdgeInsets.only(top: 2),
-                width: 4, height: 4, decoration: const BoxDecoration(shape: BoxShape.circle, color: AppColors.secondary),
-              ).animate().scale(duration: 300.ms),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildBurstEffect() {
-    return Positioned(
-      left: _burstPosition!.dx - 100,
-      top: _burstPosition!.dy - 100,
-      child: Container(
-        width: 200, height: 200,
-        alignment: Alignment.center,
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            // 충격파
-            Container(
+          // 1. 연도 선택 미니 칩 (ERA Selector)
+          GestureDetector(
+            onTap: () {
+              final next = (years.indexOf(_selectedYear) + 1) % years.length;
+              _changeYear(years[next]);
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
               decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(color: (_burstColor ?? Colors.white).withValues(alpha: 0.5), width: 2),
+                color: Colors.black.withValues(alpha: 0.4),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
               ),
-            ).animate().scale(begin: const Offset(0.1, 0.1), end: const Offset(2.0, 2.0), duration: 600.ms, curve: Curves.easeOutQuart).fadeOut(),
-            
-            // 빛의 조각들
-            for (int i = 0; i < 8; i++)
-              Transform.rotate(
-                angle: i * (math.pi * 2 / 8),
-                child: Transform.translate(
-                  offset: const Offset(0, -20),
-                  child: Container(
-                    width: 2, height: 15,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(2),
+              child: Text('$_selectedYear ERA', style: GoogleFonts.outfit(color: Colors.white38, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 2.5)),
+            ),
+          ),
+          const SizedBox(height: 8),
+          // 2. 무한 루프 아치 휠
+          _buildInfiniteArchedDial(),
+        ],
+      ).animate().fadeIn(duration: 800.ms).slideY(begin: 0.2, end: 0, curve: Curves.easeOutBack),
+    );
+  }
+
+  Widget _buildInfiniteArchedDial() {
+    final screenWidth = MediaQuery.of(context).size.width;
+    return Container(
+      height: 130, // 160에서 130으로 높이 축소 (다이어트)
+      width: screenWidth,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // 1. 아치형 글래스 리본 배경 (슬림화)
+          Positioned(
+            bottom: 10,
+            child: ClipPath(
+              clipper: _ArchClipper(curvature: 0.0012),
+              child: BackdropFilter(
+                filter: ui.ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+                child: Container(
+                  width: screenWidth,
+                  height: 100, // 120에서 100으로 축소
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.white.withValues(alpha: 0.02),
+                        Colors.white.withValues(alpha: 0.002),
+                      ],
                     ),
                   ),
                 ),
-              ).animate().moveY(begin: 0, end: -60, duration: 500.ms, curve: Curves.easeOutCubic).fadeOut(),
-          ],
-        ),
+              ),
+            ),
+          ),
+          // 2. 아치 상단 미세 광채 라인
+          Positioned(
+            bottom: 10,
+            child: CustomPaint(
+              size: Size(screenWidth, 100),
+              painter: _ArchTopLinePainter(curvature: 0.0012),
+            ),
+          ),
+          // 3. 커스텀 무한 아치 휠
+          SizedBox(
+            width: screenWidth, height: 130, // 160에서 130으로 축소
+            child: _InfiniteArchedRotary(
+              selectedMonth: _selectedMonth,
+              onMonthSelected: _focusOnMonth,
+            ),
+          ),
+          // 4. 센터 하이라이트 인디케이터
+          Positioned(
+            bottom: 82, // 높이 축소에 맞춰 하향 조정
+            child: Container(
+              width: 4, height: 4,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle, color: AppColors.secondary,
+                boxShadow: [BoxShadow(color: AppColors.secondary.withValues(alpha: 0.6), blurRadius: 12, spreadRadius: 3)],
+              ),
+            ).animate(onPlay: (c) => c.repeat()).scale(begin: const Offset(0.8, 0.8), end: const Offset(1.5, 1.5), duration: 1500.ms),
+          ),
+        ],
       ),
     );
   }
@@ -806,22 +566,9 @@ class _GalaxyScreenState extends ConsumerState<GalaxyScreen> with TickerProvider
     ).animate(target: hasEntry ? 1 : 0).scale(begin: const Offset(0.0, 0.0), end: const Offset(1.0, 1.0), curve: Curves.elasticOut, duration: 800.ms);
   }
 
-  Widget _buildGalacticCore() {
-    return Center(
-      child: Container(
-        width: 2500, height: 2500,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: RadialGradient(
-            colors: [
-              AppColors.secondary.withValues(alpha: 0.02),
-              Colors.transparent,
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+  Widget _buildGalacticCore() => Center(child: Container(width: 3200, height: 3200, decoration: BoxDecoration(shape: BoxShape.circle, gradient: RadialGradient(colors: [AppColors.secondary.withValues(alpha: 0.04), Colors.transparent]))));
+
+  Widget _buildBurstEffect() => Positioned(left: _burstPosition!.dx - 100, top: _burstPosition!.dy - 100, child: Container(width: 200, height: 200, child: Stack(alignment: Alignment.center, children: [Container(decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: _burstColor?.withValues(alpha: 0.6) ?? Colors.white, width: 1.5))).animate().scale(begin: const Offset(0.1, 0.1), end: const Offset(2.8, 2.8), duration: 600.ms, curve: Curves.easeOutExpo).fadeOut()])));
 
   Widget _buildOverlayUI() {
     return Positioned(
@@ -1146,4 +893,188 @@ class _DustPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _DustPainter oldDelegate) => oldDelegate.parallaxOffset != parallaxOffset;
+}
+
+/// 아치형 글래스 영역을 위한 커스텀 클리퍼
+class _ArchClipper extends CustomClipper<Path> {
+  final double curvature;
+  _ArchClipper({required this.curvature});
+
+  @override
+  Path getClip(Size size) {
+    final path = Path();
+    final double w = size.width;
+    final double h = size.height;
+    final double mid = w / 2;
+
+    // 상단 아치 곡선 (y = curvature * x^2 기반)
+    path.moveTo(0, h);
+    for (double x = 0; x <= w; x += 1) {
+      final double dx = x - mid;
+      final double dy = curvature * (dx * dx);
+      path.lineTo(x, dy);
+    }
+    path.lineTo(w, h);
+    path.close();
+    return path;
+  }
+
+  @override
+  bool shouldReclip(covariant CustomClipper<Path> oldClipper) => true;
+}
+
+/// 아치 상단에 얇은 광채 라인을 그리는 페인터
+class _ArchTopLinePainter extends CustomPainter {
+  final double curvature;
+  _ArchTopLinePainter({required this.curvature});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..shader = LinearGradient(
+        colors: [Colors.transparent, Colors.white.withValues(alpha: 0.15), Colors.transparent],
+      ).createShader(Rect.fromLTWH(0, 0, size.width, 10))
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 0.8;
+
+    final path = Path();
+    final double w = size.width;
+    final double mid = w / 2;
+
+    for (double x = 0; x <= w; x += 1) {
+      final double dx = x - mid;
+      final double dy = curvature * (dx * dx);
+      if (x == 0) path.moveTo(x, dy); else path.lineTo(x, dy);
+    }
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+class _InfiniteArchedRotary extends StatefulWidget {
+  final int? selectedMonth;
+  final Function(int?) onMonthSelected;
+  const _InfiniteArchedRotary({required this.selectedMonth, required this.onMonthSelected});
+
+  @override
+  State<_InfiniteArchedRotary> createState() => _InfiniteArchedRotaryState();
+}
+
+class _InfiniteArchedRotaryState extends State<_InfiniteArchedRotary> {
+  late FixedExtentScrollController _controller;
+  double _currentPixelOffset = 0.0;
+  final double itemExtent = 100.0;
+  
+  @override
+  void initState() {
+    super.initState();
+    _controller = FixedExtentScrollController(initialItem: widget.selectedMonth ?? 0);
+    _controller.addListener(() {
+      if (mounted) setState(() => _currentPixelOffset = _controller.offset);
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  String _getAbbr(int i) => i == 0 ? 'ALL' : ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'][i - 1];
+
+  @override
+  Widget build(BuildContext context) {
+    return RotatedBox(
+      quarterTurns: -1,
+      child: ListWheelScrollView.useDelegate(
+        controller: _controller,
+        itemExtent: itemExtent,
+        perspective: 0.00001, // 매우 평평하게 하여 Y축 커스텀 시뮬레이션
+        diameterRatio: 10.0,
+        physics: const FixedExtentScrollPhysics(),
+        onSelectedItemChanged: (index) {
+          final realIndex = index % 13;
+          widget.onMonthSelected(realIndex == 0 ? null : realIndex);
+        },
+        childDelegate: ListWheelChildLoopingListDelegate(
+          children: List.generate(13, (i) {
+            return RotatedBox(
+              quarterTurns: 1,
+              child: _ArchedItem(
+                index: i,
+                currentOffset: _currentPixelOffset,
+                itemExtent: itemExtent,
+                label: _getAbbr(i),
+                isSelected: (i == 0 && widget.selectedMonth == null) || (widget.selectedMonth == i),
+              ),
+            );
+          }),
+        ),
+      ),
+    );
+  }
+}
+
+class _ArchedItem extends StatelessWidget {
+  final int index;
+  final double currentOffset;
+  final double itemExtent;
+  final String label;
+  final bool isSelected;
+
+  const _ArchedItem({
+    required this.index,
+    required this.currentOffset,
+    required this.itemExtent,
+    required this.label,
+    required this.isSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // 1. 무한 루프 상태에서의 실제 수평 거리 계산
+    // ListWheelScrollView 내부에서 아이템은 index * itemExtent에 위치함
+    // 하지만 Looping Delegate이므로 현재 오프셋 주변의 아이템만 고려
+    double itemPos = index * itemExtent;
+    double diff = itemPos - currentOffset;
+    
+    // 무한 루프이므로 가장 가까운 복제본 거리를 찾음
+    final double totalWidth = 13 * itemExtent;
+    while (diff > totalWidth / 2) diff -= totalWidth;
+    while (diff < -totalWidth / 2) diff += totalWidth;
+
+    // 2. 아치 궤적 수학 공식 (Rainbow Shape)
+    // 곡률(Curvature)을 가파르게 조절하여 하단바와 조화로운 곡선 구현
+    final double curvature = 0.0012; 
+    final double yOffset = curvature * (diff * diff); 
+// 포물선 공식: y = a * x^2 (아래로 내려감)
+    
+    // 3. 거리 기반 시각 효과
+    final double opacity = (1.0 - (diff.abs() / (totalWidth / 2))).clamp(0.02, 1.0);
+    final double scale = isSelected ? 1.0 : (1.0 - (diff.abs() / totalWidth)).clamp(0.6, 0.9);
+
+    return Transform.translate(
+      offset: Offset(0, yOffset), // 실제로는 RotatedBox 때문에 수직 스크롤러에서 Y축이 수평면의 수직(즉, 화면의 Y)이 됨
+      child: Transform.rotate(
+        angle: diff * 0.0005, // 곡선 궤적에 맞춰 글자 살짝 비틀기
+        child: AnimatedScale(
+          duration: 300.ms,
+          scale: scale,
+          child: Center(
+            child: Text(
+              label,
+              style: GoogleFonts.outfit(
+                color: isSelected ? AppColors.secondary : Colors.white.withValues(alpha: opacity * 0.2),
+                fontSize: 24,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.w200,
+                letterSpacing: 4,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
